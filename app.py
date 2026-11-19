@@ -42,7 +42,7 @@ def find_mprn(mprn):
 
 
 def meter_information(mprn):
-    """Return the original flat mapping for compatibility with existing callers."""
+    """Return the flat meter-information mapping for compatibility."""
     query = """
         SELECT m.mprn, m.network, network_org.org_name AS network_name,
                m.status, status_ref.value AS status_name,
@@ -147,12 +147,7 @@ LABELS = {
 
 def page(title, body):
     return """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>{}</title><style>
-body{{font:1rem/1.5 system-ui,sans-serif;max-width:54rem;margin:2rem auto;padding:0 1rem;color:#172b4d}}
-label{{display:block;font-weight:700;margin-bottom:.4rem}}input{{font:inherit;padding:.6rem;width:min(100%,24rem);box-sizing:border-box}}
-button{{font:inherit;padding:.6rem 1rem;margin-top:1rem;cursor:pointer}}.message{{padding:.8rem;border-left:4px solid #b42318;background:#fff2f0;margin:1rem 0}}
-dl{{display:grid;grid-template-columns:minmax(12rem,1fr) 2fr;gap:.45rem 1rem}}dt{{font-weight:700}}dd{{margin:0;overflow-wrap:anywhere}}
-</style></head><body>{}</body></html>""".format(title, body)
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{}</title></head><body>{}</body></html>""".format(title, body)
 
 
 def search_page(message="", value="", status=200):
@@ -169,13 +164,25 @@ def meter_page(info):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def respond(self, status, content, location=None):
+    def respond(self, status, content, location=None, content_type="text/html; charset=utf-8"):
+        is_html = content_type.startswith("text/html")
+        if is_html:
+            content = content.replace(
+                "</head>", '<link rel="stylesheet" href="/static/styles.css"></head>', 1
+            )
+            shell_start = '''<a class="skip-link" href="#main-content">Skip to main content</a>
+<header class="site-header"><div class="site-header-inner">
+<a class="site-brand" href="/"><strong>Gas Enquiry</strong><span>Supply point information</span></a>
+<nav class="site-nav" aria-label="Main navigation"><a href="/" aria-current="page">MPRN Search</a></nav>
+</div><div class="header-accent" aria-hidden="true"></div></header><main class="app-main" id="main-content">'''
+            content = content.replace("<body>", "<body>" + shell_start, 1)
+            content = content.replace("</body>", "</main></body>", 1)
         encoded = content.encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
         if location:
             self.send_header("Location", location)
         self.end_headers()
@@ -183,6 +190,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if path == "/static/styles.css":
+            try:
+                css = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+            except OSError:
+                self.respond(404, "Not found", content_type="text/plain; charset=utf-8")
+                return
+            self.respond(200, css, content_type="text/css; charset=utf-8")
+            return
         if path == "/":
             status, content = search_page()
             self.respond(status, content)

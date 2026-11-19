@@ -1,0 +1,102 @@
+/* Original, REC Portal-inspired styling for the Gas Enquiry proof of concept.
+   This is an independent implementation and does not use REC Portal assets. */
+:root {
+  color-scheme: light;
+  --navy: #123447;
+  --navy-dark: #0b2635;
+  --green: #83b92b;
+  --green-dark: #4d791b;
+  --ink: #263746;
+  --muted: #526575;
+  --line: #d3dce1;
+  --surface: #fff;
+  --canvas: #f3f6f7;
+  --focus: #ffbf47;
+  --danger: #b42318;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 240px; background: var(--canvas); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background: var(--canvas);
+  font: 16px/1.55 Arial, Helvetica, sans-serif;
+  overflow-wrap: anywhere;
+}
+a { color: #075b81; text-underline-offset: .15em; }
+a:hover { color: var(--navy-dark); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+.skip-link {
+  position: absolute;
+  z-index: 20;
+  left: .75rem;
+  top: -5rem;
+  padding: .65rem 1rem;
+  color: #111;
+  background: var(--focus);
+  font-weight: 700;
+}
+.skip-link:focus { top: .75rem; }
+.site-header { color: #fff; background: var(--navy); border-top: 5px solid var(--green); }
+.site-header-inner {
+  max-width: 1120px;
+  min-height: 78px;
+  margin: 0 auto;
+  padding: .8rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.site-brand { color: #fff; text-decoration: none; display: flex; flex-direction: column; line-height: 1.15; }
+.site-brand strong { font-size: 1.25rem; letter-spacing: .01em; }
+.site-brand span { margin-top: .3rem; color: #d6e2e8; font-size: .82rem; }
+.site-nav { display: flex; align-items: center; gap: .45rem; }
+.site-nav a { color: #fff; display: inline-block; padding: .55rem .8rem; border-radius: 3px; text-decoration: none; font-weight: 700; }
+.site-nav a:hover, .site-nav a[aria-current="page"] { background: rgba(255,255,255,.13); text-decoration: underline; }
+.header-accent { height: 4px; background: var(--green); }
+.app-main { max-width: 1120px; width: 100%; margin: 0 auto; padding: 1.3rem 1.25rem 3rem; }
+
+/* Shared page layout / REC-style restrained portal panels. */
+.app-main > p:first-child a { font-weight: 700; }
+.app-main h1 { margin: .25rem 0 1.15rem; color: var(--navy); font-size: clamp(1.55rem, 3vw, 2rem); line-height: 1.2; }
+.app-main h2, .app-main h3 { color: var(--navy); }
+.app-main form { max-width: 42rem; padding: 1.4rem; border: 1px solid var(--line); border-top: 4px solid var(--green); border-radius: 3px; background: var(--surface); box-shadow: 0 2px 6px rgba(13,44,61,.06); }
+.app-main label { display: block; margin-bottom: .45rem; color: var(--navy); font-weight: 700; }
+.app-main input { display: block; max-width: 100%; min-height: 2.8rem; border: 1px solid #788b96; border-radius: 2px; padding: .55rem .7rem; background: #fff; color: var(--ink); font: inherit; }
+.app-main input:focus { outline: 3px solid var(--focus); outline-offset: 1px; }
+.app-main button:not(.supplier-code) { min-height: 2.7rem; padding: .55rem 1.1rem; border: 0; border-radius: 3px; background: var(--green-dark); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.app-main button:not(.supplier-code):hover { background: #3e6415; }
+.message, .error { margin: 1rem 0; padding: .8rem 1rem; border-left: 5px solid var(--danger); background: #fff3f1; color: #541d18; }
+.info-section { overflow: hidden; border: 1px solid var(--line); border-radius: 3px; margin: 1rem 0; background: var(--surface); box-shadow: 0 1px 3px rgba(13,44,61,.05); }
+.info-section > details > summary { color: var(--navy); background: #eaf0f2; border-bottom: 1px solid var(--line); }
+.info-section > details:not([open]) > summary { border-bottom: 0; }
+.section-content { background: var(--surface); }
+.field-list { max-width: 850px; }
+.record { border-color: var(--line); }
+.history > summary { display: list-item; padding: .35rem 0; }
+.status-tag { vertical-align: middle; }
+.status-tag.current { background: #e5f2d5; color: #31530e; }
+.status-tag.future { background: #e0eff6; color: #124965; }
+.supplier-code { color: #075b81; }
+.supplier-code:hover { color: var(--navy-dark); }
+
+@media (max-width: 600px) {
+  .site-header-inner { min-height: 0; align-items: flex-start; flex-direction: column; padding: .85rem 1rem; gap: .65rem; }
+  .site-nav { width: 100%; }
+  .site-nav a { padding: .4rem .6rem; }
+  .app-main { padding: 1rem .85rem 2rem; }
+  .app-main form { padding: 1rem; }
+  .field-list { grid-template-columns: 1fr !important; gap: .05rem !important; }
+  .field-list dd { margin-bottom: .55rem; }
+}
+@media (max-width: 320px) {
+  .site-brand strong { font-size: 1.1rem; }
+  .site-brand span { font-size: .75rem; }
+  .app-main { padding-right: .65rem; padding-left: .65rem; }
+  .info-section > details > summary { padding: .65rem .75rem; }
+  .section-content { padding-right: .7rem; padding-left: .7rem; }
+}

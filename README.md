@@ -2,6 +2,10 @@
 
 Build the database from the CSV files in `data/` with `python3 scripts/create_database.py`, then start the app using `python3 app.py`. Open <http://127.0.0.1:8000>.
 
+## Front-end style
+
+The pages now use a responsive, accessible portal-style theme inspired by the restrained navigation, colours, panels and typography of the Retail Energy Code Portal. It is an independent design and does not copy REC Portal branding or assets. The shared stylesheet is `static/styles.css`; the app serves it at `/static/styles.css`.
+
 ## Meter Information page
 
 The page uses `page_framework.py` for shared section behaviour. The **Details** and **Meter Point Information** sections appear first. **Supplier Information** shows the current supplier code and effective dates; hovering or keyboard-focusing the code reveals the supplier name. The expandable Supplier history contains the complete timeline, ordered by Effective From Date from latest to oldest, with dates formatted as `DD/MM/YYYY`. Current and future records receive corresponding status tags; historical records have no tag.
