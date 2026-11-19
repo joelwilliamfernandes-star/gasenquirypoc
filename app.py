@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from details_section import load_details_section
 from meter_point_information import load_meter_point_information
+from supplier_information import load_supplier_information
 from page_framework import Field, Section, render_information_page
 
 ROOT = Path(__file__).resolve().parent
@@ -81,9 +82,7 @@ def load_meter_sections(mprn):
     """Load page sections independently so one source failure is isolated."""
     try:
         with open_database() as db:
-            meter = db.execute(
-                "SELECT mprn FROM mprn WHERE mprn = ?", (mprn,)
-            ).fetchone()
+            meter = db.execute("SELECT mprn FROM mprn WHERE mprn = ?", (mprn,)).fetchone()
     except sqlite3.Error as error:
         raise DatabaseError from error
     if meter is None:
@@ -121,16 +120,7 @@ def load_meter_sections(mprn):
         ("address_line_5", "Address line 5", None), ("address_line_6", "Address line 6", None),
         ("address_line_7", "Address line 7", None), ("postcode", "Postcode", None),
     ])
-    load_section("Supplier", """
-        SELECT sh.supplier_short_code, o.org_name AS supplier_name,
-               sh.efd AS start_date, sh.etd AS end_date
-        FROM supplier_history AS sh
-        LEFT JOIN organizations AS o ON o.short_code = sh.supplier_short_code
-        WHERE sh.mprn = ?
-    """, (mprn,), record_specs=[
-        ("supplier_name", "Supplier", None), ("supplier_short_code", "Supplier code", None),
-        ("start_date", "Start date", None), ("end_date", "End date", None),
-    ])
+    sections.append(load_supplier_information(mprn, open_database))
     return sections
 
 

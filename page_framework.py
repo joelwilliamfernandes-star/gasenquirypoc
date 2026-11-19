@@ -24,6 +24,8 @@ class Section:
     record_fields: list[tuple[str, str, str | None]] = field(default_factory=list)
     start_key: str = "start_date"
     end_key: str = "end_date"
+    record_mode: str | None = None
+    current_record: dict[str, Any] | None = None
 
 
 def _parse_date(value: Any) -> date | None:
@@ -38,13 +40,17 @@ def _parse_date(value: Any) -> date | None:
     return None
 
 
+def _display_date(value: Any) -> str:
+    parsed = _parse_date(value)
+    return parsed.strftime("%d/%m/%Y") if parsed else ("" if value is None else str(value))
+
+
 def is_current_record(record: dict[str, Any], today: date | None = None,
                       start_key: str = "start_date", end_key: str = "end_date") -> bool:
     """Apply inclusive start/end dates; a missing end date remains current."""
     today = today or date.today()
     start_value = record.get(start_key)
     end_value = record.get(end_key)
-    # Records without date fields are ordinary current data, not history.
     if start_value is None and end_value is None:
         return True
     start = _parse_date(start_value)
@@ -94,14 +100,54 @@ def _record_markup(record: dict[str, Any], record_fields: list[tuple[str, str, s
     return f'<article class="record">{content}</article>' if content else ""
 
 
+def _supplier_markup(record: dict[str, Any], index: int, today: date) -> str:
+    code = escape(str(record.get("supplier_code") or ""))
+    name = escape(str(record.get("supplier_name") or record.get("supplier_code") or ""))
+    accessible_name = escape(f"Supplier code {record.get('supplier_code', '')}; supplier name {record.get('supplier_name', '')}", quote=True)
+    status = record.get("status", "historical")
+    badge = f'<span class="status-tag {status}">{status.title()}</span>' if status in {"current", "future"} else ""
+    start = escape(_display_date(record.get("start_date")))
+    end = escape(_display_date(record.get("end_date")))
+    supplier = (f'<button type="button" class="supplier-code" aria-label="{accessible_name}">'
+                f'<span class="supplier-code-value">{code}</span>'
+                f'<span class="supplier-name-value">{name}</span></button>{badge}')
+    lines = [f"<dt>Supplier</dt><dd>{supplier}</dd>"]
+    if start:
+        lines.append(f"<dt>Effective From Date</dt><dd>{start}</dd>")
+    if end:
+        lines.append(f"<dt>Effective To Date</dt><dd>{end}</dd>")
+    return f'<article class="record"><dl class="field-list">{"".join(lines)}</dl></article>'
+
+
+def _supplier_content(section: Section, section_id: str, today: date) -> str:
+    records = sorted(section.records,
+                     key=lambda row: _parse_date(row.get("start_date")) or date.min,
+                     reverse=True)
+    current = section.current_record
+    if current is None:
+        current_markup = '<p>No current Supplier is recorded.</p>'
+    else:
+        current_markup = _supplier_markup(current, 0, today)
+    history = ""
+    if len(records) > 1:
+        history_items = "".join(_supplier_markup(record, i + 1, today)
+                                 for i, record in enumerate(records))
+        history = (f'<details class="history supplier-history"><summary>Show Supplier history '
+                   f'({len(records)} records)</summary>{history_items}</details>')
+    return current_markup + history
+
+
 def render_section(section: Section, index: int, today: date | None = None) -> str:
     if section.state == "no_data":
         return ""
+    today = today or date.today()
     section_id = f"section-{index}"
     if section.state == "failed":
         content = '<p class="error" role="alert">Failed to load data</p>'
     elif section.state == "data":
-        if section.records:
+        if section.record_mode == "supplier":
+            content = _supplier_content(section, section_id, today)
+        elif section.records:
             current, historical = order_current_and_historical(
                 section.records, today, section.start_key, section.end_key
             )
@@ -141,6 +187,12 @@ a{{color:var(--blue)}}h1{{font-size:clamp(1.5rem,5vw,2rem)}}
 dt{{font-weight:700}}dd{{margin:0;min-width:0;overflow-wrap:anywhere}}.record{{padding:.6rem 0;border-bottom:1px solid #d8d8d8}}
 .record:last-child{{border-bottom:0}}.history{{margin-top:.75rem;border-top:1px solid var(--border);padding-top:.65rem}}
 .history>summary{{cursor:pointer;color:var(--blue);font-weight:700}}.error{{padding:.75rem;border-left:4px solid var(--error);background:#fff2f0}}
+.status-tag{{display:inline-block;margin-left:.5rem;padding:.05rem .45rem;border-radius:.2rem;font-size:.85rem;font-weight:700}}
+.status-tag.current{{background:#d7f0dc;color:#145c2c}}.status-tag.future{{background:#e5f1fb;color:#174a75}}
+.supplier-code{{font:inherit;color:var(--blue);background:transparent;border:0;padding:0;text-decoration:underline;cursor:pointer}}
+.supplier-code:focus-visible{{outline:3px solid #ffbf47;outline-offset:2px}}
+.supplier-name-value{{display:none}}.supplier-code:hover .supplier-code-value,.supplier-code:focus .supplier-code-value{{display:none}}
+.supplier-code:hover .supplier-name-value,.supplier-code:focus .supplier-name-value{{display:inline}}
 .tooltip{{display:inline-flex;align-items:center;justify-content:center;border:1px solid currentColor;border-radius:50%;width:1.15rem;height:1.15rem;font-size:.8rem;cursor:help;position:relative}}
 .tooltip-text{{display:none;position:absolute;z-index:2;max-width:min(20rem,85vw);padding:.6rem;background:#172b4d;color:white;border-radius:.2rem;font-weight:400}}
 .tooltip:hover+.tooltip-text,.tooltip:focus+.tooltip-text{{display:block}}
