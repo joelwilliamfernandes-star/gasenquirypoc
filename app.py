@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from page_framework import Field, Section, render_information_page
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("GAS_ENQUIRY_DB", ROOT / "data" / "gas_enquiry.sqlite3"))
@@ -38,7 +39,7 @@ def find_mprn(mprn):
 
 
 def meter_information(mprn):
-    """Load one meter point and related information for its information page."""
+    """Return the legacy flat meter-information mapping used by callers/tests."""
     query = """
         SELECT m.mprn, m.network, network_org.org_name AS network_name,
                m.status, status_ref.value AS status_name,
@@ -64,8 +65,7 @@ def meter_information(mprn):
           ON supplier.mprn = m.mprn AND (supplier.etd IS NULL OR supplier.etd = '')
         LEFT JOIN organizations AS supplier_org
           ON supplier_org.short_code = supplier.supplier_short_code
-        WHERE m.mprn = ?
-        LIMIT 1
+        WHERE m.mprn = ? LIMIT 1
     """
     try:
         with open_database() as db:
@@ -75,6 +75,95 @@ def meter_information(mprn):
         raise DatabaseError from error
 
 
+def load_meter_sections(mprn):
+    """Load common information sections independently so one failure is isolated."""
+    try:
+        with open_database() as db:
+            meter = db.execute(
+                "SELECT mprn, network, status FROM mprn WHERE mprn = ?", (mprn,)
+            ).fetchone()
+    except sqlite3.Error as error:
+        raise DatabaseError from error
+    if meter is None:
+        return None
+
+    sections = [Section("Details", "data", fields=[
+        Field("MPRN", meter["mprn"]),
+        Field("Network code", meter["network"]),
+        Field("Status code", meter["status"]),
+    ])]
+
+    def load_section(title, query, parameters, field_specs=None, record_specs=None):
+        try:
+            with open_database() as db:
+                rows = [dict(row) for row in db.execute(query, parameters).fetchall()]
+        except sqlite3.Error:
+            sections.append(Section(title, "failed"))
+            return
+        if not rows:
+            sections.append(Section(title, "no_data"))
+        elif record_specs:
+            sections.append(Section(title, "data", records=rows,
+                                    record_fields=record_specs,
+                                    start_key="start_date", end_key="end_date"))
+        else:
+            row = rows[0]
+            sections.append(Section(title, "data", fields=[
+                Field(label, row.get(key), tooltip) for key, label, tooltip in field_specs
+            ]))
+
+    load_section("Meter Point Information", """
+        SELECT confirmation_reference, confirmation_efd, market_sector_code,
+               meter_link_code, meter_class, interruption_contract, network_project,
+               network_indicator, network_efd, network_etd, ldz_id, exit_zone,
+               network_owner_efd, priority_consumer, reading_frequency,
+               meter_read_batch_frequency, bypass_fitted, twinstream_indicator,
+               csep_id, shared_smp_indicator, asp_name, registration_active_date
+        FROM smp_info WHERE mprn = ?
+    """, (mprn,), field_specs=[
+        ("confirmation_reference", "Confirmation reference", None),
+        ("confirmation_efd", "Confirmation EFD", None),
+        ("market_sector_code", "Market sector code", None),
+        ("meter_link_code", "Meter link code", None), ("meter_class", "Class", None),
+        ("interruption_contract", "Interruption contract", None),
+        ("network_project", "Network project", None), ("network_indicator", "Network indicator", None),
+        ("network_efd", "Network EFD", None), ("network_etd", "Network ETD", None),
+        ("ldz_id", "LDZ ID", None), ("exit_zone", "Exit zone", None),
+        ("network_owner_efd", "Network owner EFD", None),
+        ("priority_consumer", "Priority consumer", None),
+        ("reading_frequency", "Reading frequency", None),
+        ("meter_read_batch_frequency", "Meter read batch frequency", None),
+        ("bypass_fitted", "Bypass fitted", None),
+        ("twinstream_indicator", "Twinstream indicator", None),
+        ("csep_id", "CSEP ID", None), ("shared_smp_indicator", "Shared SMP indicator", None),
+        ("asp_name", "ASP name", None),
+        ("registration_active_date", "Registration active date", None),
+    ])
+    load_section("Address", """
+        SELECT address_line_1, address_line_2, address_line_3, address_line_4,
+               address_line_5, address_line_6, address_line_7, postcode
+        FROM addresses WHERE mprn = ?
+    """, (mprn,), field_specs=[
+        ("address_line_1", "Address line 1", None), ("address_line_2", "Address line 2", None),
+        ("address_line_3", "Address line 3", None), ("address_line_4", "Address line 4", None),
+        ("address_line_5", "Address line 5", None), ("address_line_6", "Address line 6", None),
+        ("address_line_7", "Address line 7", None), ("postcode", "Postcode", None),
+    ])
+    load_section("Supplier", """
+        SELECT sh.supplier_short_code, o.org_name AS supplier_name,
+               sh.efd AS start_date, sh.etd AS end_date
+        FROM supplier_history AS sh
+        LEFT JOIN organizations AS o ON o.short_code = sh.supplier_short_code
+        WHERE sh.mprn = ?
+    """, (mprn,), record_specs=[
+        ("supplier_name", "Supplier", None),
+        ("supplier_short_code", "Supplier code", None),
+        ("start_date", "Start date", None), ("end_date", "End date", None),
+    ])
+    return sections
+
+
+# Kept for compatibility with callers using the original single-section renderer.
 LABELS = {
     "mprn": "MPRN", "network": "Network code", "network_name": "Network",
     "status_name": "Status", "confirmation_reference": "Confirmation reference",
@@ -84,8 +173,7 @@ LABELS = {
     "network_indicator": "Network indicator", "network_efd": "Network EFD",
     "network_etd": "Network ETD", "ldz_id": "LDZ ID", "exit_zone": "Exit zone",
     "network_owner_efd": "Network owner EFD", "priority_consumer": "Priority consumer",
-    "reading_frequency": "Reading frequency",
-    "meter_read_batch_frequency": "Meter read batch frequency",
+    "reading_frequency": "Reading frequency", "meter_read_batch_frequency": "Meter read batch frequency",
     "bypass_fitted": "Bypass fitted", "twinstream_indicator": "Twinstream indicator",
     "csep_id": "CSEP ID", "shared_smp_indicator": "Shared SMP indicator",
     "asp_name": "ASP name", "registration_active_date": "Registration active date",
@@ -93,15 +181,13 @@ LABELS = {
     "address_line_3": "Address line 3", "address_line_4": "Address line 4",
     "address_line_5": "Address line 5", "address_line_6": "Address line 6",
     "address_line_7": "Address line 7", "postcode": "Postcode",
-    "current_supplier_code": "Current supplier code",
-    "current_supplier_name": "Current supplier",
+    "current_supplier_code": "Current supplier code", "current_supplier_name": "Current supplier",
 }
 
 
 def page(title, body):
-    return """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{}</title><style>
+    return """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{}</title><style>
 body{{font:1rem/1.5 system-ui,sans-serif;max-width:54rem;margin:2rem auto;padding:0 1rem;color:#172b4d}}
 label{{display:block;font-weight:700;margin-bottom:.4rem}}input{{font:inherit;padding:.6rem;width:min(100%,24rem);box-sizing:border-box}}
 button{{font:inherit;padding:.6rem 1rem;margin-top:1rem;cursor:pointer}}.message{{padding:.8rem;border-left:4px solid #b42318;background:#fff2f0;margin:1rem 0}}
@@ -111,23 +197,15 @@ dl{{display:grid;grid-template-columns:minmax(12rem,1fr) 2fr;gap:.45rem 1rem}}dt
 
 def search_page(message="", value="", status=200):
     notice = f'<p class="message" role="alert">{escape(message)}</p>' if message else ""
-    body = f"""<h1>Search by MPRN</h1>{notice}
-<form action="/search" method="post">
-  <label for="mprn">Complete MPRN</label>
-  <input id="mprn" name="mprn" inputmode="numeric" autocomplete="off" required value="{escape(value, quote=True)}">
-  <button type="submit">Search</button>
-</form>"""
+    body = f"""<h1>Search by MPRN</h1>{notice}<form action="/search" method="post">
+<label for="mprn">Complete MPRN</label><input id="mprn" name="mprn" inputmode="numeric" autocomplete="off" required value="{escape(value, quote=True)}">
+<button type="submit">Search</button></form>"""
     return status, page("Search by MPRN", body)
 
 
 def meter_page(info):
-    items = []
-    for key, label in LABELS.items():
-        value = info.get(key)
-        if value is not None and str(value).strip():
-            items.append(f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>")
-    body = f"<p><a href=\"/\">Search another MPRN</a></p><h1>Meter Information</h1><dl>{''.join(items)}</dl>"
-    return page(f"Meter Information — {escape(info['mprn'])}", body)
+    fields = [Field(label, info.get(key)) for key, label in LABELS.items()]
+    return render_information_page(info["mprn"], [Section("Meter Point Information", "data", fields=fields)])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -152,18 +230,18 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/meter/"):
             mprn = path.removeprefix("/meter/")
             try:
-                info = meter_information(mprn)
+                sections = load_meter_sections(mprn)
             except DatabaseError:
                 status, content = search_page("The search service is temporarily unavailable. Please try again.", status=503)
                 self.respond(status, content)
                 return
-            if info is None:
+            if sections is None:
                 status, content = search_page("That MPRN was not found. Check the number and try again.", status=404)
                 self.respond(status, content)
                 return
-            self.respond(200, meter_page(info))
+            self.respond(200, render_information_page(mprn, sections))
             return
-        self.respond(404, page("Not found", "<h1>Page not found</h1><p><a href=\"/\">Return to MPRN search</a></p>"))
+        self.respond(404, page("Not found", '<h1>Page not found</h1><p><a href="/">Return to MPRN search</a></p>'))
 
     def do_POST(self):
         if urlparse(self.path).path != "/search":
@@ -194,7 +272,6 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(303, "", f"/meter/{matched}")
 
     def log_message(self, fmt, *args):
-        # Avoid writing submitted MPRNs into routine access logs.
         super().log_message(fmt, *args)
 
 
