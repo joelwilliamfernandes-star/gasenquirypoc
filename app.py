@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from details_section import load_details_section
 from page_framework import Field, Section, render_information_page
 
 ROOT = Path(__file__).resolve().parent
@@ -87,11 +88,8 @@ def load_meter_sections(mprn):
     if meter is None:
         return None
 
-    sections = [Section("Details", "data", fields=[
-        Field("MPRN", meter["mprn"]),
-        Field("Network code", meter["network"]),
-        Field("Status code", meter["status"]),
-    ])]
+    # Details is first on the page and has its own retrieval/failure behaviour.
+    sections = [load_details_section(meter, open_database)]
 
     def load_section(title, query, parameters, field_specs=None, record_specs=None):
         try:
@@ -163,7 +161,6 @@ def load_meter_sections(mprn):
     return sections
 
 
-# Kept for compatibility with callers using the original single-section renderer.
 LABELS = {
     "mprn": "MPRN", "network": "Network code", "network_name": "Network",
     "status_name": "Status", "confirmation_reference": "Confirmation reference",
