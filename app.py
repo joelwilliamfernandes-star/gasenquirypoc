@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from details_section import load_details_section
+from meter_point_information import load_meter_point_information
 from page_framework import Field, Section, render_information_page
 
 ROOT = Path(__file__).resolve().parent
@@ -40,7 +41,7 @@ def find_mprn(mprn):
 
 
 def meter_information(mprn):
-    """Return the legacy flat meter-information mapping used by callers/tests."""
+    """Return the original flat mapping for compatibility with existing callers."""
     query = """
         SELECT m.mprn, m.network, network_org.org_name AS network_name,
                m.status, status_ref.value AS status_name,
@@ -77,19 +78,19 @@ def meter_information(mprn):
 
 
 def load_meter_sections(mprn):
-    """Load common information sections independently so one failure is isolated."""
+    """Load page sections independently so one source failure is isolated."""
     try:
         with open_database() as db:
             meter = db.execute(
-                "SELECT mprn, network, status FROM mprn WHERE mprn = ?", (mprn,)
+                "SELECT mprn FROM mprn WHERE mprn = ?", (mprn,)
             ).fetchone()
     except sqlite3.Error as error:
         raise DatabaseError from error
     if meter is None:
         return None
 
-    # Details is first on the page and has its own retrieval/failure behaviour.
     sections = [load_details_section(meter, open_database)]
+    sections.append(load_meter_point_information(mprn, open_database))
 
     def load_section(title, query, parameters, field_specs=None, record_specs=None):
         try:
@@ -110,33 +111,6 @@ def load_meter_sections(mprn):
                 Field(label, row.get(key), tooltip) for key, label, tooltip in field_specs
             ]))
 
-    load_section("Meter Point Information", """
-        SELECT confirmation_reference, confirmation_efd, market_sector_code,
-               meter_link_code, meter_class, interruption_contract, network_project,
-               network_indicator, network_efd, network_etd, ldz_id, exit_zone,
-               network_owner_efd, priority_consumer, reading_frequency,
-               meter_read_batch_frequency, bypass_fitted, twinstream_indicator,
-               csep_id, shared_smp_indicator, asp_name, registration_active_date
-        FROM smp_info WHERE mprn = ?
-    """, (mprn,), field_specs=[
-        ("confirmation_reference", "Confirmation reference", None),
-        ("confirmation_efd", "Confirmation EFD", None),
-        ("market_sector_code", "Market sector code", None),
-        ("meter_link_code", "Meter link code", None), ("meter_class", "Class", None),
-        ("interruption_contract", "Interruption contract", None),
-        ("network_project", "Network project", None), ("network_indicator", "Network indicator", None),
-        ("network_efd", "Network EFD", None), ("network_etd", "Network ETD", None),
-        ("ldz_id", "LDZ ID", None), ("exit_zone", "Exit zone", None),
-        ("network_owner_efd", "Network owner EFD", None),
-        ("priority_consumer", "Priority consumer", None),
-        ("reading_frequency", "Reading frequency", None),
-        ("meter_read_batch_frequency", "Meter read batch frequency", None),
-        ("bypass_fitted", "Bypass fitted", None),
-        ("twinstream_indicator", "Twinstream indicator", None),
-        ("csep_id", "CSEP ID", None), ("shared_smp_indicator", "Shared SMP indicator", None),
-        ("asp_name", "ASP name", None),
-        ("registration_active_date", "Registration active date", None),
-    ])
     load_section("Address", """
         SELECT address_line_1, address_line_2, address_line_3, address_line_4,
                address_line_5, address_line_6, address_line_7, postcode
@@ -154,8 +128,7 @@ def load_meter_sections(mprn):
         LEFT JOIN organizations AS o ON o.short_code = sh.supplier_short_code
         WHERE sh.mprn = ?
     """, (mprn,), record_specs=[
-        ("supplier_name", "Supplier", None),
-        ("supplier_short_code", "Supplier code", None),
+        ("supplier_name", "Supplier", None), ("supplier_short_code", "Supplier code", None),
         ("start_date", "Start date", None), ("end_date", "End date", None),
     ])
     return sections
